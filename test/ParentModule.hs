@@ -15,6 +15,6 @@ $(dataLogInit_th_module_data_test >> return [])
 
 $(dataLogAppend_th_module_data_test (LogContent 4 "p4") >> return [])
 
-$(dataLogGet_th_module_data_test >>= \log -> do
-     runIO $ print log
-     return [])
+-- $(dataLogGet_th_module_data_test >>= \log -> do
+--      runIO $ print log
+--      return [])
