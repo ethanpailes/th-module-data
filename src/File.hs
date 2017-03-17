@@ -6,29 +6,12 @@ import Control.Exception (IOException, catch)
 import Data.List (find)
 import Language.Haskell.TH (Q, location, Loc(loc_filename), runIO
                            , reportWarning)
-import Language.Haskell.TH.Syntax (Module(..))
+import Language.Haskell.TH.Syntax (Module(..), PkgName(..), ModName(..))
 import System.Directory (getCurrentDirectory, canonicalizePath
                         , getDirectoryContents, doesDirectoryExist
                         , createDirectoryIfMissing)
-import System.IO (Handle, IOMode(..), openFile)
+import System.IO (Handle, IOMode(..), openFile, hClose)
 import System.FilePath (takeExtension, takeDirectory, (</>), (<.>))
-
--- for debugging TODO: delete
-import Language.Haskell.TH
-import Language.Haskell.TH.Syntax as THS
-import System.IO
-spliceIn :: Lift a => Name -> Q a -> Q [Dec]
-spliceIn n q = q >>= \q' -> THS.lift q' >>= \qv ->
-  return [ValD (VarP n) (NormalB qv) []]
-thisM' = do
-  (Module (PkgName pkgName) (ModName modName)) <- thisModule
-  return (pkgName, modName)
-writeFoo :: Q [Dec]
-writeFoo = do
-  h <- thisModule >>= \m -> moduleDataFile m "pads" WriteMode
-  runIO $ hPutStr h "foo\n"
-  runIO $ hClose h
-  return []
 
 
 -- | Run a quote action with the given module data file

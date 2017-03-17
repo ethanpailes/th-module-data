@@ -8,12 +8,15 @@ import Data.Serialize
 import Data.Typeable
 import GHC.Generics
 import DataLog
+import Env
 import Data.Vector as V
 
 data LogContent = LogContent Int String
   deriving(Generic, Typeable, Eq, Ord, Show)
 instance Serialize LogContent
 $(genDataLog "th_module_data_test" ''LogContent)
+
+
 
 
 -- DataLogFor_th_module_data_test

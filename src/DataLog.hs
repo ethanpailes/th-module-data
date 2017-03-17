@@ -4,42 +4,34 @@
 module DataLog where
 
 import Data.Serialize (Serialize(..), encode, decode)
-import Data.Serialize.Put (putWord8, putByteString)
-import Data.Serialize.Get (getWord8, getByteString)
-import Language.Haskell.TH (Q, thisModule, runIO, ModuleInfo, newName, Type)
+import Language.Haskell.TH (Q, thisModule, runIO, newName)
 import Language.Haskell.TH.Syntax (Module(Module), qGetQ, qPutQ
-                                  , PkgName(PkgName), ModName(ModName))
+                                  , PkgName(PkgName), ModName(ModName)
+                                  , mkName
+                                  , Name
+                                  , Match(Match)
+                                  , Exp(..)
+                                  , Type(..)
+                                  , Dec(..)
+                                  , Con(..)
+                                  , Stmt(..)
+                                  , Strict(..)
+                                  , Pat(..)
+                                  , Body(..)
+                                  )
 import qualified Language.Haskell.TH.Syntax as THS
 import System.IO (IOMode(AppendMode, ReadMode, WriteMode))
-import Data.ByteString (hPut, hGetContents, ByteString)
-import Data.ByteString.Char8 (pack)
+import Data.ByteString (hPut, hGetContents)
 import qualified Data.ByteString as BS
 import File (withModuleDataFile, dataFilePath)
 import Data.Vector (Vector, empty, snoc)
 import qualified Data.Vector as V
 import GHC.Generics (Generic)
 import System.Directory (doesFileExist)
-import GHC.IO.Handle (hFileSize)
 import Control.Monad (when)
 import Data.Typeable (Typeable(..))
 import Data.Maybe (catMaybes)
 import Data.Monoid ((<>))
-
--- for debugging TODO delete (or refactor into tests)
-import Language.Haskell.TH
-import File
-import Debug.Trace
-import Data.Serialize
--- writeThing :: Serialize a => a -> Q [Dec]
--- writeThing x = appendModuleLog "test" x >> return []
-readStuff :: Name -> Q [Dec]
-readStuff n = do
-  mod <- thisModule
-  spliceIn n $ do
-    (deps, log) <- readModuleLog "test" mod
-    return (V.toList log :: [Int])
-
-
 
 -- | Indicates if the modules depends on other modules, and if so
 --   points in the right direction.
@@ -91,35 +83,57 @@ genDataLog' :: String -- ^ the namespace
             -> [Name] -- ^ a list of extra typeclasses to add to the derive statement
             -> Q [Dec]
 genDataLog' namespace contentTy extraDerives = do
-  a <- newName "a"
-  let logTyName = mkName $ "DataLogFor_" ++ namespace
-      dataLogInitName = mkName $ "dataLogInit_" ++ namespace
-      dataLogAppendName = mkName $ "dataLogAppend_" ++ namespace
-      dataLogGetName = mkName $ "dataLogGet_" ++ namespace
-      logTy = DataD [] logTyName []
-                [NormalC logTyName
+  logTy <- genLogTy namespace contentTy extraDerives
+  dataLogInit <- genDataLogInit namespace contentTy extraDerives
+  dataLogAppend <- genDataLogAppend namespace contentTy extraDerives
+  dataLogGet <- genDataLogGet namespace contentTy extraDerives
+
+  return [ logTy
+         , dataLogInit
+         , dataLogAppend
+         , dataLogGet
+         ]
+
+-- | generate the datatype used for the in-memory log
+genLogTy :: String -- ^ the namespace
+         -> Name -- ^ the content type
+         -> [Name] -- ^ the extra derives
+         -> Q Dec
+genLogTy namespace contentTy extraDerives = do
+  let name = mkDataLogTyName namespace
+  return $ DataD [] name []
+                [NormalC name
                  [(NotStrict, AppT (ConT ''Vector) (ConT contentTy))]]
                  (''Typeable : extraDerives)
-  dataLogInitBody <- [| do
+
+-- | generate the init funciton which slurps all the data files
+--   into the in-memory log, and is idempotent so that it can
+--   be safely called every time a quasi quoter is invoked.
+genDataLogInit :: String -- ^ the namespace
+               -> Name -- ^ the content type
+               -> [Name] -- ^ the extra derives
+               -> Q Dec
+genDataLogInit namespace contentTy extraDerives = do
+  let name = mkDataLogInitName namespace
+      logTyName = mkDataLogTyName namespace
+  body <- [| do
       newMod <- newModuleCheckAndSet $(THS.lift namespace)
       when newMod $ do
         log <- readDepLogs namespace :: Q (Vector $(return . ConT $ contentTy))
         qPutQ ($(return . ConE $ logTyName) log)
     |]
+  return $ ValD (VarP name) (NormalB body) []
 
-  let logCase log datum justCase nothingCase = let l = mkName "l" in
-        DoE [
-          VarP log `BindS` (VarE 'qGetQ `SigE`
-                            (ConT ''Q `AppT`
-                             (ConT ''Maybe `AppT` ConT logTyName)))
-        , NoBindS (CaseE (VarE log) [
-             Match (ConP 'Just [ParensP (ConP logTyName [VarP l])])
-               (NormalB (justCase l)) []
-           , Match (ConP 'Nothing []) (NormalB nothingCase) []])
-        ]
-
+-- | Generate the append function. I bet you can't guess what it does.
+genDataLogAppend :: String -- ^ the namespace
+                 -> Name -- ^ the content type
+                 -> [Name] -- ^ the extra derives
+                 -> Q Dec
+genDataLogAppend namespace contentTy extraDerives = do
+  let name = mkDataLogAppendName namespace
+      logTyName = mkDataLogTyName namespace
       appendCase log datum =
-        logCase log datum (appendExists datum) (appendNew datum)
+        logCase namespace log (appendExists datum) (appendNew datum)
 
       appendExists datum l =
         AppE (VarE 'qPutQ) (ParensE
@@ -128,7 +142,7 @@ genDataLog' namespace contentTy extraDerives = do
       appendNew datum =
         AppE (VarE 'qPutQ) (ParensE (AppE (ConE logTyName)
                                      (VarE 'V.singleton `AppE` VarE datum) ))
-  dataLogAppendBody <- do
+  body <- do
     logName <- newName "log"
     datumName <- newName "datum"
     body <- [| do
@@ -161,22 +175,51 @@ genDataLog' namespace contentTy extraDerives = do
     -- we need to directly construct the lambda to avoid the restriction
     -- on pattern splices
     return $ LamE [VarP datumName] body
+  return $ ValD (VarP name) (NormalB body) []
 
-  dataLogGetBody <- do
+-- | generate the get function which returns the whole log.
+genDataLogGet :: String -- ^ the namespace
+                 -> Name -- ^ the content type
+                 -> [Name] -- ^ the extra derives
+                 -> Q Dec
+genDataLogGet namespace contentTy extraDerives = do
+  let name = mkDataLogGetName namespace
+  body <- do
     logName <- newName "log"
     datumName <- newName "datum"
     fail <- [| fail ("th-module-data:DataLog.hs:dataLogGet_"
                       ++ $(THS.lift namespace)
                       ++ " get called before init or append!") |]
-    return $ logCase logName datumName
+    return $ logCase namespace logName
                (\l -> VarE 'return `AppE` VarE l)
                fail
+  return $ ValD (VarP name) (NormalB body) []
 
-  return [ logTy
-         , ValD (VarP dataLogInitName) (NormalB dataLogInitBody) []
-         , ValD (VarP dataLogAppendName) (NormalB dataLogAppendBody) []
-         , ValD (VarP dataLogGetName) (NormalB dataLogGetBody) []
-         ]
+logCase :: String -> Name -> (Name -> Exp) -> Exp -> Exp
+logCase namespace log justCase nothingCase =
+  let l = mkName "l"
+      logTyName = mkDataLogTyName namespace
+  in DoE [
+          VarP log `BindS` (VarE 'qGetQ `SigE`
+                            (ConT ''Q `AppT`
+                             (ConT ''Maybe `AppT` ConT logTyName)))
+        , NoBindS (CaseE (VarE log) [
+             Match (ConP 'Just [ParensP (ConP logTyName [VarP l])])
+               (NormalB (justCase l)) []
+           , Match (ConP 'Nothing []) (NormalB nothingCase) []])
+        ]
+
+
+------------------------------------------------------------------------
+--                                                                    --
+-- Code to directly manipulate the log files and Q Monad module state --
+--                                                                    --
+-- In the below code the Q monad is used as an odd sort of IO         --
+-- monad, rather than a way to generate template haskell.             --
+--                                                                    --
+------------------------------------------------------------------------
+
+
 
 -- | fetch all the dependencies of this module, whether direct or transitive,
 --   returning the results. Helper function for dataFileInit_<namespace>.
@@ -210,7 +253,7 @@ getModuleDeps :: String -- ^ the namespace
               -> Module -- ^ the module
               -> Q [Module] -- ^ the deps
 getModuleDeps namespace mdl = do
-  ModuleInfo importedMods <- reifyModule mdl
+  THS.ModuleInfo importedMods <- THS.reifyModule mdl
   catMaybes <$> mapM ifExists importedMods
     where ifExists mod = do
             fileName <- dataFilePath mod namespace
@@ -224,6 +267,10 @@ getModuleDeps namespace mdl = do
 data ModuleDirtyFlags = ModuleDirtyFlags [String]
   deriving(Typeable, Show)
 
+-- | Keeps a list of dirty flags for the modules that have been touched
+--   in the current compilation unit. This is what allows the
+--   generated `dataLogInit_<namespace>` functions to be idempotent
+--   as we want.
 newModuleCheckAndSet :: String -- ^ the namespace
                      -> Q Bool -- ^ true if this namespace is new for the module
 newModuleCheckAndSet namespace = do
@@ -280,6 +327,18 @@ createM st a = loop st empty
             Just (elem, newSt) -> loop newSt (vec `snoc` elem)
             Nothing -> return vec
 
-
 serialisedIntLength :: Int
 serialisedIntLength = 8
+
+mkDataLogTyName :: String -> Name
+mkDataLogTyName namespace = mkName $ "DataLogFor_" ++ namespace
+
+mkDataLogInitName :: String -> Name
+mkDataLogInitName namespace = mkName $ "dataLogInit_" ++ namespace
+
+
+mkDataLogAppendName :: String -> Name
+mkDataLogAppendName namespace = mkName $ "dataLogAppend_" ++ namespace
+
+mkDataLogGetName :: String -> Name
+mkDataLogGetName namespace = mkName $ "dataLogGet_" ++ namespace

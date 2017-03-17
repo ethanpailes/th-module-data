@@ -15,9 +15,9 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib
-                     , File
+  exposed-modules:     File
                      , DataLog
+                     , Env
   build-depends:       base >= 4.7 && < 5
                      , cereal >= 0.5
                      , template-haskell >= 2.10
