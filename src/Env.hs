@@ -2,8 +2,7 @@
 
 -- | environments implimented in terms of `DataLog`
 
-module Env where
-  --(genStringEnv, genEnv, genEnv') where
+module Env (genStringEnv, genEnv, genEnv') where
 
 import Language.Haskell.TH (Q, Name, Dec(..))
 import Language.Haskell.TH.Syntax (Type(..), mkName,
