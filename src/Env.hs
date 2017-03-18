@@ -2,7 +2,8 @@
 
 -- | environments implimented in terms of `DataLog`
 
-module Env (genStringEnv, genEnv, genEnv') where
+module Env where
+  --(genStringEnv, genEnv, genEnv') where
 
 import Language.Haskell.TH (Q, Name, Dec(..))
 import Language.Haskell.TH.Syntax (Type(..), mkName,
@@ -62,7 +63,7 @@ genEnvGet namespace = do
   let dlGetName = mkDataLogGetName namespace
   body <- [| \key -> do
        dl <- $(return . VarE $ dlGetName)
-       key `vectorLookup` dl
+       return $ key `vectorLookup` dl
     |]
   return $ ValD (VarP (mkName $ "envGet_" ++ namespace)) (NormalB body) []
 
@@ -79,10 +80,10 @@ vectorLookup k v =
   case V.length v of
     0 -> Nothing
     n ->
-      let hd = V.head v in
-      if k == fst hd
-          then Just . snd $ hd
-          else vectorLookup k (V.slice 1 n v)
+      let (key, value)= V.head v in
+      if k == key
+          then Just value
+          else vectorLookup k (V.slice 1 (n - 1) v)
 
 
 

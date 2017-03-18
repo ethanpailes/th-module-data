@@ -5,6 +5,10 @@ module GrandParentModule where
 import DataLogDef
 import Language.Haskell.TH
 
+--
+-- Data Log
+--
+
 $(dataLogInit_th_module_data_test >> return [])
 
 $(dataLogAppend_th_module_data_test (LogContent 1 "gp1") >> return [])
