@@ -41,3 +41,7 @@ the `stack clean` command, the README should recomend doing that.
 I should add simmilar advice for `cabal`.
 
 Efficent append? Mutable vectors? Should I just give up and use a list?
+
+What is the right name for all these modules?
+`Language.Haskell.TH.DataLog`, `Language.Haskell.TH.Env`, and
+`Language.Haskell.TH.File`? The last one at least seems a little presumptuous.
