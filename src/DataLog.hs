@@ -295,9 +295,11 @@ newModuleCheckAndSet namespace = do
       qPutQ (ModuleDirtyFlags [namespace])
       return True
     Just (ModuleDirtyFlags flags) -> do
-      qPutQ (ModuleDirtyFlags (namespace:flags))
-      return $ namespace `notElem` flags
-
+      if namespace `elem` flags
+        then return False
+        else do
+          qPutQ (ModuleDirtyFlags (namespace:flags))
+          return True
 
 -- | Read the log for a give module into a vector
 readModuleLog :: Serialize a
