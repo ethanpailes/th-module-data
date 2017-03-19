@@ -1,6 +1,23 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-|
+Module      : File
+Description : Utilities to manipulate th-module-data files
+Copyright   : (c) Ethan Pailes, 2017
+License     : BSD3
+Maintainer  : ethanpailes@email.com
+Stability   : experimental
+Portability : POSIX
 
-module File where
+This supports finding the appropriate location to put build
+data files depending on whether you are using `stack` or
+`cabal`.
+-}
+module File (withModuleDataFile
+            , moduleDataFile
+            , dataFileName
+            , baseDir
+            , dataFilePath
+            ) where
 
 import Control.Exception (IOException, catch)
 import Data.List (find)
@@ -49,12 +66,14 @@ dataFileName (Module (PkgName pkg) (ModName mod)) namespace = do
               ++ " mod=" ++ show mod
               ++ " namespace=" ++ show namespace
 
+-- | generate the data file path from a module name and a namespace
 dataFilePath :: Module -> String -> Q FilePath
 dataFilePath m n = do
   base <- baseDir
   file <- dataFileName m n
   return $ base </> file
 
+-- | calculate the base directory for the `th-module-data` output
 baseDir :: Q FilePath
 baseDir = do
   rootDir <- pathRelativeToCabalPackage "."

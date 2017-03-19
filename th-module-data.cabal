@@ -29,6 +29,7 @@ library
                      -- for development
                      , haskell-src-meta >= 0.6
   default-language:    Haskell2010
+  other-modules:       Util
 
 test-suite test-suite
   type:                exitcode-stdio-1.0

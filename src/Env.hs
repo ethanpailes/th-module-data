@@ -1,13 +1,23 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-|
+Module      : Env
+Description : Provides TH functions to add environment support to the Q monad
+Copyright   : (c) Ethan Pailes, 2017
+License     : BSD3
+Maintainer  : ethanpailes@email.com
+Stability   : experimental
+Portability : POSIX
 
--- | environments implimented in terms of `DataLog`
-
+The `genEnv` family of functions provides a way to generate get
+and put functions for an environment in the Q monad.
+-}
 module Env (genStringEnv, genEnv, genEnv') where
 
 import Language.Haskell.TH (Q, Name, Dec(..))
 import Language.Haskell.TH.Syntax (Type(..), mkName,
                                    Exp(..), Pat(..), Body(..))
-import DataLog (genDataLog', mkDataLogGetName, mkDataLogAppendName)
+import DataLog (genDataLog')
+import Util (mkDataLogGetName, mkDataLogAppendName)
 import qualified Data.Vector as V
 
 
