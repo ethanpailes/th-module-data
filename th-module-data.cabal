@@ -25,6 +25,8 @@ library
                      , filepath >= 1.4
                      , bytestring >= 0.10
                      , vector >= 0.11
+                     , dynamic-mvector >= 0.1
+                     , primitive >= 0.6
 
                      -- for development
                      , haskell-src-meta >= 0.6
